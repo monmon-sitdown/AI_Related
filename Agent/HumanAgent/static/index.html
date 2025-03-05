@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>My avatar</title>
+        <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@latest/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js">
+        </script>    
+    </head>
+    <body>
+        <script>
+            var SpeechSDK;
+            var peerConnection;
+            var cogSvcRegion = "westus2";
+            var subscriptionKey = ""; //The key will be set later
+            
+            var speakerHandle = function(avatarSynthesizer, msg, emotion) {
+                var voiceselect = document.getElementById("voiceSelect").value;
+                var spokenSsml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='en-US'>
+                    <voice name='${voiceselect}'>
+                        <mstts:express-as style='${emotion}' role='YoungAdultFemale' styledegree='2'>${msg}</mstts:express-as>
+                     </voice></speak>`;
+
+                avatarSynthesizer.speakSsmlAsync(spokenSsml).then((r)=>{
+                    console.log("speakSsmlAsync result:" + r);
+                    if(r.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+                        console.log("speakerSsml Async completed!")
+                    } else {
+                        console.error("speakSsmlAsync failed" + r.errorDetails);
+                        if(r.reason === SpeechSDK.ResultReason.Canceled) {
+                            var cancellationDetails = SpeechSDK.cancellationDetails.fromResult(r);
+                            console.log(cancellationDetails.reason);
+                            if(cancellationDetails.reason === SpeechSDK.cancellationDetails.Error){
+                                console.error("speakssmlAsync error:" + cancellationDetails.errorDetails);
+                            }
+                        }
+                    }
+                }).catch((e)=>{
+                    console.error("speakSsmlAsync failed" + e);
+                    avatarSynthesizer.close();
+                })
+            }
+            var chatWithAI = function(avatarSynthesizer) {
+                var chatInputValue = document.getElementById("chatInput").value;
+                //console.log("Input Content", chatInputValue);
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST", `http://0.0.0.0:8000/chat?query=${chatInputValue}`);
+                xhr.addEventListener("readystatechange", function(){
+                    if(this.readyState === 4) {
+                        var responseData = JSON.parse(this.responseText);
+                        
+                        console.log("response data:", responseData);
+                        speakerHandle(avatarSynthesizer, responseData[0].msg, responseData[0].emotion);
+                        /*
+                        var responseText = responseData.queryResult.fulfillmentText;
+                        console.log("Reply by AI: " + responseText);
+                        avatarSynthesizer.speakTextAsync(responseText).then((r)=>{
+                                console.log("AI reply synthesis succeed" + r.resultId);
+                            }).catch((e) => {
+                                console.error("AI text synthesis failed" + e);
+                            }
+                        )*/
+                        updateConversation(chatInputValue, responseData[0].msg);
+                    }
+                });
+                xhr.send();
+            }
+
+            var updateConversation = function(userMessage, aiResponse) {
+                var conversationDiv = document.getElementById("conversation");
+                var userMessageDiv = document.createElement("div");
+                var aiMessageDiv = document.createElement("div");
+
+                userMessageDiv.textContent = "You: " + userMessage;
+                aiMessageDiv.textContent = "AI: " + aiResponse;
+
+                conversationDiv.appendChild(userMessageDiv);
+                conversationDiv.appendChild(aiMessageDiv);
+
+                
+                conversationDiv.scrollTop = conversationDiv.scrollHeight;
+            }
+
+            var speechConfig = SpeechSDK.SpeechConfig.fromSubscription(subscriptionKey, cogSvcRegion);
+
+            speechConfig.speechSynthesisVoiceName = "en-US-LunaNeural";
+            var videoFormat = new SpeechSDK.AvatarVideoFormat();
+            var avatarConfig = new SpeechSDK.AvatarConfig(
+                "lisa",
+                "casual-sitting",
+                videoFormat,
+            )
+            document.addEventListener("DOMContentLoaded", function() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", `https://westus2.tts.speech.microsoft.com/cognitiveservices/avatar/relay/token/v1`);
+                xhr.setRequestHeader("Ocp-Apim-Subscription-Key", subscriptionKey);
+                xhr.addEventListener("readystatechange", function(){
+
+                    //console.log("XHR response:", this.responseText);
+
+                    if (this.readyState === 4) {
+                        var responseData = JSON.parse(this.responseText);
+
+                        //console.log("Parsed Data:", responseData);
+
+                        var iceServerUrl = responseData.Urls[0];
+                        var iceServerUsername = responseData.Username;
+                        var iceServerCredential = responseData.Password;
+                        console.log(responseData.Urls[0]);
+                        console.log(responseData.Username);
+                        console.log(responseData.Password);
+                        //console.log("Creating RTCPeerConnection...");
+                        peerConnection = new RTCPeerConnection({
+                            iceServers: [
+                                {
+                                    urls: iceServerUrl,
+                                    username: iceServerUsername,
+                                    credential: iceServerCredential,
+                                }
+                            ]
+                        });
+                        console.log("RTCPeerConnection:", peerConnection);
+
+                        peerConnection.ontrack = function(event){
+                            if(event.track.kind === "video") {
+                                console.log("avatar video track received");
+                                var videoElement = document.createElement("video");
+                                videoElement.srcObject = event.streams[0];
+                                videoElement.autoplay = true;
+                                videoElement.id = "videoPlayer";
+                                videoElement.muted = true;
+                                videoElement.playsInline = true;
+                                
+                                videoElement.style.width = "500px";  
+                                videoElement.style.height = "auto";  
+                                videoElement.style.border = "2px solid black"; 
+                                document.body.appendChild(videoElement);
+                            } else if(event.track.kind === "audio") {
+                                console.log("avatar audio track received");
+                                var audioElement = document.createElement("audio");
+                                audioElement.srcObject = event.streams[0];
+                                audioElement.autoplay = true;
+                                audioElement.id = "audioPlayer";
+                                audioElement.muted = true;
+                                document.body.appendChild(audioElement);
+                            }
+                        }
+                        peerConnection.oniceconnectionstatechange = function(){
+
+                            console.log("ICE Connection State:", peerConnection.iceConnectionState);
+
+                            if(peerConnection.iceConnectionState === "connected") {
+                                console.log("avatar connected");
+                            } else if(peerConnection.iceConnectionState === "connected" || peerConnection.iceConnectionState === "closed") {
+                                console.log("avatar disconnected");
+                            }   
+                        }
+                        peerConnection.addTransceiver("video", {direction:"sendrecv"});
+                        peerConnection.addTransceiver("audio", {direction:"sendrecv"});
+
+                        var avatarSynthesizer = new SpeechSDK.AvatarSynthesizer(speechConfig, avatarConfig);
+
+                        avatarSynthesizer.startAvatarAsync(peerConnection).then(
+                            (r) => {
+                                console.log("Avatar started ID:" + r.resultId);
+
+                                var chatInput = document.createElement("input");
+                                chatInput.type = "text"
+                                chatInput.placeholder = "Type your message here";
+                                chatInput.id = "chatInput";
+                                chatInput.style = "width:300px; height:50px;";
+                                document.body.appendChild(chatInput);
+
+                                var voiceSelect = document.createElement("select");
+                                voiceSelect.id = "voiceSelect";
+                                voiceSelect.style = "width:100px; height:50px;";
+                                voiceSelect.innerHTML = `
+                                    <option value="en-GB-SoniaNeural">English(UK)</option>
+                                    <option value="en-IN-AashiNeural">English(India)</option>
+                                    <option value="en-US-LunaNeural">English(US)</option>
+                                `
+                                document.body.appendChild(voiceSelect);
+                                var sendButton = document.createElement("button");
+                                sendButton.innerHTML = "Send";
+                                sendButton.style = "width:100px; height:50px;";
+                                document.body.appendChild(sendButton);
+
+
+                                var conversationDiv = document.createElement("div");
+                                conversationDiv.id = "conversation";
+                                conversationDiv.style = "width:500px; height:300px; overflow-y:scroll; border:1px solid black; padding:10px;";
+                                document.body.appendChild(conversationDiv);
+
+
+
+                                sendButton.addEventListener("click", function() {
+                                    var videoPlayer = document.getElementById("videoPlayer");
+                                    var audioPlayer = document.getElementById("audioPlayer");
+                                    videoPlayer.muted = false;
+                                    audioPlayer.muted = false;
+                                    audioPlayer.play();
+                                    videoPlayer.play();
+                                    console.log("Button clicked")
+                                    chatWithAI(avatarSynthesizer);
+                                    
+                                })
+                            }).catch((e)=>{
+                                console.log("avatar starting failed:" + e);
+                            }
+                        )
+                    }
+                })
+                xhr.send();
+                if(!!window.SpeechSDK) {
+                    SpeechSDK = window.SpeechSDK;
+                }
+            })
+        </script>
+    </body>
+</html>
