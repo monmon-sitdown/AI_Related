@@ -1,8 +1,9 @@
-# AI Avatar Chatbot
+# AI Avatar Assistant
 
 ## Overview
 
 This project is a web-based AI-powered avatar chatbot that utilizes Microsoft's Cognitive Services Speech SDK. The chatbot is capable of processing text input, generating responses, and synthesizing speech with an animated avatar.
+You can find a very simple Demo in https://youtube.com/shorts/7qQlGkDpC-M
 
 ## Features
 

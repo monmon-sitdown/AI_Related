@@ -1,4 +1,4 @@
-# AI Avatar Assistant
+# AI Tele Chatbot
 
 ## Overview
 
@@ -50,3 +50,7 @@ Ensure you have Python 3.8+ installed.
 ## Telegram Bot Integration
 
 The project includes a Telegram bot for remote interaction. The bot forwards user messages to the local FastAPI server and returns responses.
+
+### Example: A screenshot
+
+![A screenshot of the talk with the Tele bot](TeleScreenshot.png)
